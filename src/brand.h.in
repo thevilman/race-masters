@@ -1,0 +1,21 @@
+// The project's name, set once in CMakeLists.txt (TG_APP_NAME, TG_EXE_NAME); CMake writes
+// brand.h from this file. The launcher's logo is drawn from the same name by
+// tools/gen_launcher_art.py.
+#pragma once
+
+#define TG_APP_NAME "@TG_APP_NAME@"  // window titles, message boxes, the title screen
+#define TG_APP_ID "@TG_EXE_NAME@"    // SDL's app identifier
+
+// The programs' file names: the game, which the launcher starts, and the launcher.
+#ifdef _WIN32
+#define TG_GAME_EXE "@TG_EXE_NAME@.exe"
+#define TG_LAUNCHER_EXE "@TG_EXE_NAME@-launcher.exe"
+#else
+#define TG_GAME_EXE "@TG_EXE_NAME@"
+#define TG_LAUNCHER_EXE "@TG_EXE_NAME@-launcher"
+#endif
+
+// The settings folder (settings.txt, progress.txt, ghosts.bin, launcher.txt, what the 3D view
+// learns), shared by the game and the launcher.
+#define TG_PREF_ORG "@TG_EXE_NAME@"
+#define TG_PREF_APP "@TG_APP_NAME@"

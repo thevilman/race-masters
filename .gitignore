@@ -1,0 +1,14 @@
+# Never commit game data.
+*.sfc
+*.smc
+*.SFC
+*.SMC
+*.zip
+
+build*/
+out/
+# The modern music is made on each player's computer (tools/music): never commit it.
+audio-modern/
+.vs/
+*.user
+__pycache__/

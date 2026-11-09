@@ -1,0 +1,78 @@
+# tools/music: the modern-music generator's Python packages, every one pinned with the SHA-256
+# of each wheel PyPI has for the systems it runs on: Windows x64 with Python 3.12, Linux x86-64
+# with Python 3.10, 3.11 or 3.12. setup_tools.py installs them (or by hand, in a venv):
+#   pip install --no-deps --only-binary=:all: --require-hashes -r tools/music/requirements.txt
+# --no-deps: this list is complete (tinysoundfont declares PyAudio for live playback, which the
+# generator does not use and which needs a compiler on Linux, so it is left out).
+# Licences: tools/music/THIRD_PARTY.md. Updating a pin: change its version and hashes together
+# (https://pypi.org/pypi/<name>/<version>/json lists each wheel's sha256).
+numpy==1.26.4 \
+    --hash=sha256:08beddf13648eb95f8d867350f6a018a4be2e5ad54c8d8caed89ebca558b2818 \
+    --hash=sha256:ffa75af20b44f8dba823498024771d5ac50620e6915abac414251bd971b4529f \
+    --hash=sha256:666dbfb6ec68962c033a450943ded891bed2d54e6755e35e5835d63f4f6931d5 \
+    --hash=sha256:675d61ffbfa78604709862923189bad94014bef562cc35cf61d3a07bba02a7ed
+scipy==1.14.0 \
+    --hash=sha256:4c4161597c75043f7154238ef419c29a64ac4a7c889d588ea77690ac4d0d9b20 \
+    --hash=sha256:42470ea0195336df319741e230626b6225a740fd9dce9642ca13e98f667047c0 \
+    --hash=sha256:9e3154691b9f7ed73778d746da2df67a19d046a6c8087c8b385bc4cdb2cfca74 \
+    --hash=sha256:a01cc03bcdc777c9da3cfdcc74b5a75caffb48a6c39c8450a9a05f82c4250a14
+numba==0.60.0 \
+    --hash=sha256:f75262e8fe7fa96db1dca93d53a194a38c46da28b112b8a4aca168f0df860347 \
+    --hash=sha256:fe0b28abb8d70f8160798f4de9d486143200f34458d34c4a214114e445d7124e \
+    --hash=sha256:4142d7ac0210cc86432b818338a2bc368dc773a2f5cf1e32ff7c5b378bd63ee8 \
+    --hash=sha256:0ebaa91538e996f708f1ab30ef4d3ddc344b64b5227b67a57aa74f401bb68b9d
+llvmlite==0.43.0 \
+    --hash=sha256:7a2872ee80dcf6b5dbdc838763d26554c2a18aa833d31a2635bff16aafefb9c9 \
+    --hash=sha256:6912a87782acdff6eb8bf01675ed01d60ca1f2551f8176a300a886f09e836a6a \
+    --hash=sha256:977525a1e5f4059316b183fb4fd34fa858c9eade31f165427a3977c95e3ee749 \
+    --hash=sha256:df6509e1507ca0760787a199d19439cc887bfd82226f5af746d6977bd9f66844
+mido==1.3.3 \
+    --hash=sha256:01033c9b10b049e4436fca2762194ca839b09a4334091dd3c34e7f4ae674fd8a
+packaging==24.1 \
+    --hash=sha256:5b8f2217dbdbd2f7f384c41c628544e6d52f2d0f53c6d0c3ea61aa5d1d7ff124
+pedalboard==0.9.26 \
+    --hash=sha256:816b7063d3befb00263bfee7656932ee5f51788c586d5184d4d61f7a85f61aea \
+    --hash=sha256:96e168b77da15ffa647833cf2942b743a8529774c465eebd343e9251e45ab1ae \
+    --hash=sha256:16a970a32be619f4066f21ae45f8f23f06480beb4115a57164cbc435c99f64af \
+    --hash=sha256:38a7e65670d9fccd3179dea5f5c3c97085bb7d6aec041d8524bc6077db553e20
+pyloudnorm==0.2.0 \
+    --hash=sha256:9bb69afb904f59d007a7f9ba3d75d16fb8aeef35c44d6df822a9f192d69cf13f
+soundfile==0.14.0 \
+    --hash=sha256:8ba81ae3a89fd5ab3bef8a8eb481fbbe794e806309675a89b4df48b8d31908a8 \
+    --hash=sha256:299491d3499460fb1b74bb4bd78b57ffc2d243a5fafa7b6ec1b264875c78453e \
+    --hash=sha256:1e38bac1853412871318e82a1ba69a8be677619b56025bbfcccdb41b6cafe82d
+cffi==2.0.0 \
+    --hash=sha256:da68248800ad6320861f129cd9c1bf96ca849a2771a59e0344e88681905916f5 \
+    --hash=sha256:fc7de24befaeae77ba923797c7c87834c73648a05a4bde34b3b7e5588973a453 \
+    --hash=sha256:8941aaadaf67246224cee8c3803777eed332a19d909b47e29c9842ef1e79ac26 \
+    --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
+pycparser==2.21 \
+    --hash=sha256:8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9
+typing_extensions==4.15.0 \
+    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+pysfizz==0.1.3 \
+    --hash=sha256:8f758d20f14c0db9791d4cc7fced5e55c4d92a9f6766e15945527929f659b511 \
+    --hash=sha256:36c122eef3b6ef7506c2fbe9da5b083183ab8950ebf2a9b8aec5a4e1b806ddb5 \
+    --hash=sha256:89761e9acef7a644f72b0a98366de2361c0eb81c4351f22dde0e46bac99bb1ed \
+    --hash=sha256:2e002c5fd74987f62072663f7701c5663af9363d64aa23da8a4e6679e5f47e51
+imageio-ffmpeg==0.6.0 \
+    --hash=sha256:02fa47c83703c37df6bfe4896aab339013f62bf02c5ebf2dce6da56af04ffc0a \
+    --hash=sha256:c7e46fcec401dd990405049d2e2f475e2b397779df2519b544b8aab515195282
+pytheory==0.57.13 \
+    --hash=sha256:c3ae028d0788a7bdf380d6d8344454bc959ec99c84bb3e8b99c3ac8490c7cf41
+rich==15.0.0 \
+    --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb
+markdown-it-py==3.0.0 \
+    --hash=sha256:355216845c60bd96232cd8d8c40e8f9765cc86f46880e43a8fd22dc1a1a8cab1
+mdurl==0.1.2 \
+    --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8
+Pygments==2.18.0 \
+    --hash=sha256:b8e6aca0523f3ab76fee51799c488e38782ac06eafcf95e7ba832985c8e7b13a
+sounddevice==0.5.6 \
+    --hash=sha256:de099612311ad81e55d31ccbd83f43ea6bf4d87b48f9b6ea55a1fbcde0eee4e0 \
+    --hash=sha256:7f4162f514f007b0bf25a3ccfed3f1705bc2ec311888a90232729eec4f57a4f4
+tinysoundfont==0.3.7 \
+    --hash=sha256:402269dc9da85d722697a96254dbd64d57fe083f16e56b662d8ed897f53a1aa0 \
+    --hash=sha256:1d4cc63f6bb851832517ceaf106680051c481be8e313f41ac76e0838d5e2e881 \
+    --hash=sha256:f638536ce801dd77526419e25a53576ffd4f7d58d6e1673e6b70a1a8c4773448 \
+    --hash=sha256:c48a614fbc0287f16ad4bef857c79e80ba9e413474fbe47f460d2dd1ec449d4b

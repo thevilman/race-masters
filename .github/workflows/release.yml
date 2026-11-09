@@ -1,0 +1,100 @@
+name: release
+
+# A v* tag, or running this by hand with a new tag name (it builds the branch it's run on
+# and creates the tag), builds the Windows and Linux downloads and publishes them as that tag's release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach to
+        required: true
+
+permissions:
+  contents: write
+
+# The project's names (TG_APP_NAME and TG_EXE_NAME in CMakeLists.txt): the release's title and
+# the programs' and downloads' file names.
+env:
+  APP: race-masters
+  TITLE: Race Masters
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 ninja-build
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+          cmake --build build --target topgear topgear-launcher tg_audio
+      - name: Package
+        run: |
+          mkdir -p "dist/$APP"
+          cp "build/$APP.exe" "build/$APP-launcher.exe" README.md LEGAL.md "dist/$APP/"
+          # The modern-music generator (code only; the launcher's Build music runs it on the
+          # player's computer): music-tools/music, music-tools/audio, music-tools/tg_audio.exe.
+          sh tools/package_music_tools.sh build "dist/$APP/music-tools"
+          sh tools/release_licenses.sh build "dist/$APP/licenses"
+          cd dist && zip -qr "../$APP-windows-x64.zip" "$APP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: ${{ env.APP }}-windows-x64.zip
+
+  linux:
+    runs-on: ubuntu-22.04  # older glibc, so the build runs on more distributions
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install SDL's build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev \
+            libgles2-mesa-dev libdrm-dev libgbm-dev libudev-dev libdbus-1-dev
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target topgear topgear-launcher tg_audio
+      - name: Package
+        run: |
+          mkdir -p "dist/$APP"
+          cp "build/$APP" "build/$APP-launcher" README.md LEGAL.md "dist/$APP/"
+          sh tools/package_music_tools.sh build "dist/$APP/music-tools"
+          sh tools/release_licenses.sh build "dist/$APP/licenses"
+          tar -C dist -czf "$APP-linux-x64.tar.gz" "$APP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: ${{ env.APP }}-linux-x64.tar.gz
+
+  publish:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # .github/whats-new.md (if not empty) goes first: what changed in this release.
+          { [ -s .github/whats-new.md ] && { cat .github/whats-new.md; echo; }; sed "s/TAG/$TAG/g" .github/release-notes.md; } > notes.md
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --title "$TITLE $TAG" --notes-file notes.md
+          gh release upload "$TAG" "$APP-windows-x64.zip" "$APP-linux-x64.tar.gz" --clobber
+          # The README's download buttons link to these fixed names; drop older, versioned ones.
+          for a in $(gh release view "$TAG" --json assets --jq '.assets[].name'); do
+            case "$a" in "$APP-windows-x64.zip"|"$APP-linux-x64.tar.gz") ;; *) gh release delete-asset "$TAG" "$a" -y ;; esac
+          done

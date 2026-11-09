@@ -1,0 +1,352 @@
+#include "game.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "coverage.h"
+#include "lockstep.h"
+#include "snes.h"
+#include "port/port.h"
+
+struct TgGame {
+  Snes* snes;
+  uint8_t rom[TG_ROM_SIZE];
+  TgCoverage* coverage;
+  FILE* trace;
+  TgLockstep* lockstep;
+  TgPortMode port_mode;
+  TgApuPortObserver apu_observer;
+  void* apu_observer_ctx;
+};
+
+TgGame* tg_game_create(const TgRom* rom) {
+  TgGame* game = calloc(1, sizeof(TgGame));
+  if(game == NULL) return NULL;
+  game->snes = snes_init();
+  snes_setPixelFormat(game->snes, pixelFormatXRGB);
+  memcpy(game->rom, rom->data, TG_ROM_SIZE);
+  if(!snes_loadRom(game->snes, rom->data, (int) rom->size)) {
+    tg_game_destroy(game);
+    return NULL;
+  }
+  return game;
+}
+
+void tg_game_destroy(TgGame* game) {
+  if(game == NULL) return;
+  tg_lockstep_destroy(game->lockstep);
+  if(game->snes) snes_free(game->snes);
+  free(game);
+}
+
+void tg_game_reset(TgGame* game, bool hard) {
+  snes_reset(game->snes, hard);
+}
+
+void tg_game_set_input(TgGame* game, int player, uint16_t buttons) {
+  for(int i = 0; i < 12; i++) snes_setButtonState(game->snes, player, i, (buttons >> i) & 1);
+}
+
+void tg_game_run_frame(TgGame* game) {
+  snes_runFrame(game->snes);
+}
+
+void tg_game_get_pixels(TgGame* game, uint8_t* pixels) {
+  snes_setPixels(game->snes, pixels);
+}
+
+void tg_game_get_samples(TgGame* game, int16_t* samples, int count) {
+  snes_setSamples(game->snes, samples, count);
+}
+
+static uint8_t peek(TgGame* game, uint32_t adr) {
+  int32_t off = tg_lorom_offset(adr);
+  if(off >= 0) return game->rom[off];
+  uint8_t bank = (uint8_t) (adr >> 16);
+  if(bank == 0x7e || bank == 0x7f) return game->snes->ram[adr & 0x1ffff];
+  if((bank & 0x40) == 0 && (adr & 0xffff) < 0x2000) return game->snes->ram[adr & 0x1fff];
+  return 0;
+}
+
+static void traceOpcode(void* ctx, Cpu* cpu) {
+  TgGame* game = ctx;
+  uint32_t adr = ((uint32_t) cpu->k << 16) | cpu->pc;
+  uint8_t bytes[4];
+  for(int i = 0; i < 4; i++) bytes[i] = peek(game, (adr & 0xff0000) | ((adr + i) & 0xffff));
+  if(game->coverage) tg_coverage_on_opcode(game->coverage, adr, bytes, cpu->mf, cpu->xf, cpu->e, cpu->db, cpu->dp);
+  if(game->trace) {
+    int len = tg_w65816_length(bytes[0], cpu->mf, cpu->xf);
+    fprintf(game->trace, "%06X ", adr);
+    for(int i = 0; i < 4; i++) fprintf(game->trace, i < len ? "%02X" : "  ", bytes[i]);
+    fprintf(game->trace, " A=%04X X=%04X Y=%04X S=%04X D=%04X DB=%02X %c%c V=%d\n", cpu->a, cpu->x, cpu->y,
+      cpu->sp, cpu->dp, cpu->db, cpu->mf ? 'm' : 'M', cpu->xf ? 'x' : 'X', game->snes->vPos);
+  }
+}
+
+static void traceRead(void* ctx, uint32_t adr, uint8_t val) {
+  TgGame* game = ctx;
+  if(game->lockstep) tg_lockstep_on_read(game->lockstep, adr, val);
+  if(game->lockstep && tg_lockstep_in_c(game->lockstep)) return;
+  if(game->coverage) tg_coverage_on_read(game->coverage, adr);
+}
+
+static void traceWrite(void* ctx, uint32_t adr, uint8_t val) {
+  TgGame* game = ctx;
+  if(game->lockstep) tg_lockstep_on_write(game->lockstep, adr, val);
+  if(game->trace) fprintf(game->trace, "  W %06X=%02X\n", adr, val);
+  // The APU ports ($2140-$217F, four ports mirrored) in the banks that reach the B bus.
+  uint8_t bank = (uint8_t) (adr >> 16);
+  if(game->apu_observer && (bank < 0x40 || (bank >= 0x80 && bank < 0xC0)) && (adr & 0xFFC0) == 0x2140)
+    game->apu_observer(game->apu_observer_ctx, (int) (adr & 3), val, game->snes->cycles);
+}
+
+static void hdmaWrite(void* ctx, uint8_t adr, uint8_t val) {
+  TgGame* game = ctx;
+  tg_lockstep_on_hdma_write(game->lockstep, adr, val);
+}
+
+static bool portCall(void* ctx, Cpu* cpu) {
+  TgGame* game = ctx;
+  return tg_lockstep_on_opcode(game->lockstep, cpu);
+}
+
+static void updateHooks(TgGame* game) {
+  bool any = game->coverage || game->trace;
+  game->snes->cpu->traceHook = any ? traceOpcode : NULL;
+  game->snes->cpu->traceCtx = game;
+  game->snes->readHook = game->coverage || game->lockstep ? traceRead : NULL;
+  game->snes->writeHook = game->trace || game->lockstep || game->apu_observer ? traceWrite : NULL;
+  game->snes->readHookCtx = game;
+  game->snes->cpu->callHook = game->lockstep ? portCall : NULL;
+  game->snes->hdmaWriteHook = game->lockstep ? hdmaWrite : NULL;
+  game->snes->cpu->callCtx = game;
+}
+
+void tg_game_set_port_mode(TgGame* game, TgPortMode mode) {
+  tg_lockstep_destroy(game->lockstep);
+  game->port_mode = mode;
+  game->lockstep = mode == TG_PORT_OFF ? NULL : tg_lockstep_create(game->snes, game->rom, mode);
+  updateHooks(game);
+}
+
+int tg_game_port_report(TgGame* game, FILE* f) {
+  return game->lockstep ? tg_lockstep_report(game->lockstep, f) : 0;
+}
+
+void tg_game_sprite_state(TgGame* game, TgSpriteState* out) {
+  Ppu* ppu = game->snes->ppu;
+  out->vram = ppu->vram;
+  out->cgram = ppu->cgram;
+  out->oam = ppu->oam;
+  out->high_oam = ppu->highOam;
+  out->obj_ident = ppu->objIdent;
+  out->obj_adr1 = ppu->objTileAdr1;
+  out->obj_adr2 = ppu->objTileAdr2;
+  out->obj_size = ppu->objSize;
+  out->bg1_map = ppu->bgLayer[0].tilemapAdr;
+  out->bg1_tiles = ppu->bgLayer[0].tileAdr;
+  out->bg2_map = ppu->bgLayer[1].tilemapAdr;
+  out->bg2_tiles = ppu->bgLayer[1].tileAdr;
+  out->bg2_hs = ppu->bgLayer[1].hScroll, out->bg2_vs = ppu->bgLayer[1].vScroll;
+  out->bg2_wide = ppu->bgLayer[1].tilemapWider, out->bg2_high = ppu->bgLayer[1].tilemapHigher;
+  out->bg1_hs = ppu->bgLayer[0].hScroll, out->bg1_vs = ppu->bgLayer[0].vScroll;
+  out->bg1_wide = ppu->bgLayer[0].tilemapWider, out->bg1_high = ppu->bgLayer[0].tilemapHigher;
+  out->inidisp = (uint8_t) ((ppu->forcedBlank ? 0x80 : 0) | (ppu->brightness & 15));
+  // This frame was composed full-screen: the C race code set the view up for it (the
+  // original's own code, as in verify mode, draws the split screen whatever the PPU is armed for).
+  bool full = ppu->full != NULL && (ppu->fullArmed & PPU_FULL_VIEW) && game->port_mode == TG_PORT_NATIVE;
+  for(int i = 0; i < 224; i++) out->line_at[i] = (int16_t) (full ? ppu_fullMapRow(ppu, i) : i);
+}
+
+void tg_game_dump_ppu(TgGame* game, const char* path) {
+  FILE* f = fopen(path, "wb");
+  if(f == NULL) return;
+  Ppu* ppu = game->snes->ppu;
+  fwrite(ppu->vram, sizeof(ppu->vram), 1, f);
+  fwrite(ppu->cgram, sizeof(ppu->cgram), 1, f);
+  fwrite(ppu->oam, sizeof(ppu->oam), 1, f);
+  fwrite(ppu->highOam, sizeof(ppu->highOam), 1, f);
+  // Where the sprite tiles are and their sizes (OBSEL), for tools/extract_sprites.py.
+  uint8_t obsel[5] = {(uint8_t) ppu->objTileAdr1, (uint8_t) (ppu->objTileAdr1 >> 8),
+                      (uint8_t) ppu->objTileAdr2, (uint8_t) (ppu->objTileAdr2 >> 8), ppu->objSize};
+  fwrite(obsel, sizeof(obsel), 1, f);
+  // Which object each sprite belongs to (high frame rate only, else zeros): see
+  // tg_port_obj_idents in src/port/port.h.
+  fwrite(ppu->objIdent, sizeof(ppu->objIdent), 1, f);
+  // The background layers as the frame ends: mode, then per layer the tilemap and tile
+  // addresses (words), tilemap size (wider, higher), scroll.
+  uint8_t bg[1 + 4 * 10];
+  bg[0] = ppu->mode;
+  for(int i = 0; i < 4; i++) {
+    const BgLayer* l = &ppu->bgLayer[i];
+    uint8_t* p = &bg[1 + i * 10];
+    p[0] = (uint8_t) l->tilemapAdr; p[1] = (uint8_t) (l->tilemapAdr >> 8);
+    p[2] = (uint8_t) l->tileAdr; p[3] = (uint8_t) (l->tileAdr >> 8);
+    p[4] = l->tilemapWider; p[5] = l->tilemapHigher;
+    p[6] = (uint8_t) l->hScroll; p[7] = (uint8_t) (l->hScroll >> 8);
+    p[8] = (uint8_t) l->vScroll; p[9] = (uint8_t) (l->vScroll >> 8);
+  }
+  fwrite(bg, sizeof(bg), 1, f);
+  fclose(f);
+}
+
+static void updateRedraw(TgGame* game) {
+  bool on = tg_port_full_view || tg_port_wide_margin > 0 || tg_port_interp;
+  tg_port_race_frame = 0;
+  game->snes->ppu->objGrounds = on ? tg_port_obj_grounds : NULL;
+  game->snes->ppu->raceFrame = on ? &tg_port_race_frame : NULL;
+  game->snes->ppu->wideMargin = tg_port_wide_margin;
+}
+
+void tg_game_set_full_view(TgGame* game, bool on) {
+  tg_port_full_view = on;
+  updateRedraw(game);
+}
+
+void tg_game_set_interp(TgGame* game, bool on) {
+  Ppu* ppu = game->snes->ppu;
+  if(on && !tg_port_interp) for(int i = 0; i < 0x2000; i++) tg_port_line_depth[i] = PPU_NOT_ENTRY;
+  tg_port_interp = on;
+  ppu->interp = on;
+  ppu->objIdents = on ? tg_port_obj_idents : NULL;
+  ppu->objAnchorXs = tg_port_obj_ax;
+  ppu->objAnchorYs = tg_port_obj_ay;
+  ppu->lineDepths = on ? tg_port_line_depth : NULL;
+  ppu->lineCams = tg_port_line_cam;
+  updateRedraw(game);
+}
+
+bool tg_game_interp(TgGame* game, float t) { return ppu_interpCompose(game->snes->ppu, t); }
+
+void tg_game_set_tall_road(TgGame* game, bool on) { game->snes->ppu->roadScale = on ? 2.0f : 0; }
+void tg_game_set_hud_layout(TgGame* game, bool mapTop, bool speedBottom) {
+  game->snes->ppu->hudMapTop = mapTop;
+  game->snes->ppu->hudSpeedBottom = speedBottom;
+}
+
+void tg_game_progress(TgGame* game, uint8_t open[3]) {
+  for(int i = 0; i < 3; i++) open[i] = (uint8_t) (game->snes->ram[0x1F0A + i * 2] & 7);
+}
+
+void tg_game_unlock(TgGame* game, const uint8_t open[3]) {
+  for(int i = 0; i < 3; i++) {
+    uint8_t* p = &game->snes->ram[0x1F0A + i * 2];
+    if(p[1] != 0 || p[0] > 7) continue;  // not set up yet
+    if(open[i] > p[0]) p[0] = open[i];
+  }
+}
+
+static void updateFlags(TgGame* game) {
+  game->snes->ppu->objFlags = tg_port_ghost || tg_port_wide_margin > 0 ? tg_port_obj_flags : NULL;
+}
+
+void tg_game_set_ghost(TgGame* game, bool on) {
+  tg_port_ghost = on;
+  updateFlags(game);
+}
+
+bool tg_game_ghosts_changed(TgGame* game) {
+  (void) game;
+  bool c = tg_port_ghosts_changed;
+  tg_port_ghosts_changed = false;
+  return c;
+}
+
+// File: "TGGHOST1", then per course with a lap: course byte, lap time word, sample count
+// word, samples (4 little-endian words each).
+bool tg_game_save_ghosts(TgGame* game, const char* path) {
+  (void) game;
+  FILE* f = fopen(path, "wb");
+  if(f == NULL) return false;
+  fwrite("TGGHOST1", 1, 8, f);
+  for(int c = 0; c < TG_GHOST_COURSES; c++) {
+    const TgGhostLap* l = &tg_port_ghosts[c];
+    if(l->count == 0) continue;
+    uint8_t h[5] = {(uint8_t) c, (uint8_t) l->time, (uint8_t) (l->time >> 8), (uint8_t) l->count, (uint8_t) (l->count >> 8)};
+    fwrite(h, 1, 5, f);
+    for(int i = 0; i < l->count; i++) {
+      const TgGhostSample* s = &l->samples[i];
+      uint16_t w[4] = {s->time, s->pos, s->side, s->kind};
+      for(int k = 0; k < 4; k++) {
+        uint8_t b[2] = {(uint8_t) w[k], (uint8_t) (w[k] >> 8)};
+        fwrite(b, 1, 2, f);
+      }
+    }
+  }
+  return fclose(f) == 0;
+}
+
+bool tg_game_load_ghosts(TgGame* game, const char* path) {
+  (void) game;
+  FILE* f = fopen(path, "rb");
+  if(f == NULL) return false;
+  char magic[8];
+  bool ok = fread(magic, 1, 8, f) == 8 && memcmp(magic, "TGGHOST1", 8) == 0;
+  uint8_t h[5];
+  while(ok && fread(h, 1, 5, f) == 5) {
+    int c = h[0], count = h[3] | h[4] << 8;
+    if(c >= TG_GHOST_COURSES || count > TG_GHOST_SAMPLES) { ok = false; break; }
+    TgGhostLap* l = &tg_port_ghosts[c];
+    l->time = (uint16_t) (h[1] | h[2] << 8);
+    for(int i = 0; i < count && ok; i++) {
+      uint8_t b[8];
+      ok = fread(b, 1, 8, f) == 8;
+      l->samples[i] = (TgGhostSample) {(uint16_t) (b[0] | b[1] << 8), (uint16_t) (b[2] | b[3] << 8),
+                                       (uint16_t) (b[4] | b[5] << 8), (uint16_t) (b[6] | b[7] << 8)};
+    }
+    l->count = ok ? count : 0;
+  }
+  fclose(f);
+  return ok;
+}
+
+void tg_game_set_side_by_side(TgGame* game, bool on) {
+  (void) game;
+  tg_port_side_by_side = on;
+}
+
+void tg_game_set_wide(TgGame* game, int margin) {
+  if(margin < 0) margin = 0;
+  if(margin > PPU_WIDE_MAX) margin = PPU_WIDE_MAX;
+  tg_port_wide_margin = margin;
+  updateRedraw(game);
+  updateFlags(game);
+}
+
+int tg_game_wide_margin(const TgGame* game) {
+  (void) game;
+  return tg_port_wide_margin;
+}
+
+const uint32_t* tg_game_wide_pixels(TgGame* game) {
+  return tg_port_wide_margin > 0 ? game->snes->ppu->wideBuffer : NULL;
+}
+
+void tg_game_set_coverage(TgGame* game, TgCoverage* cov) {
+  game->coverage = cov;
+  updateHooks(game);
+}
+
+void tg_game_set_trace(TgGame* game, void* file) {
+  game->trace = file;
+  updateHooks(game);
+}
+
+void tg_game_set_apu_observer(TgGame* game, TgApuPortObserver fn, void* ctx) {
+  game->apu_observer = fn;
+  game->apu_observer_ctx = ctx;
+  updateHooks(game);
+}
+
+void tg_game_set_voice_mute(TgGame* game, uint8_t mask) { dsp_setOutputMask(game->snes->apu->dsp, mask); }
+
+uint8_t tg_game_voice_mute(const TgGame* game) { return game->snes->apu->dsp->outputMask; }
+
+const uint8_t* tg_game_wram(const TgGame* game) {
+  return game->snes->ram;
+}
+
+uint32_t tg_game_frame_count(const TgGame* game) {
+  return game->snes->frames;
+}

@@ -1,0 +1,71 @@
+# Work RAM variables: <addr> <name> [; comment]. 0000-1FFF is low RAM (mirrored in banks 00-3F/80-BF).
+# The menus and races use the same low addresses for different things; such entries are
+# written Menu<name>/Race<name>.
+0000 NmiTrampoline ; JML: $0F:8000 in menus, $00:EC1A in races
+0004 IrqTrampoline ; RTI in menus, JML $00:EC5B in races
+0008 MenuFrameCounter8/Race08 ; menus: incremented every NMI; races: a code pointer ($B75A at start)
+000A MenuJoy1Held/RaceIrqHandler ; races: routine the raster IRQ calls via JSR ($000A)
+000C MenuJoy2Held/RaceSyncFlag ; races: set by RaceSyncWait, cleared from the raster IRQ chain
+000E MenuJoy1Pressed ; newly pressed buttons, accumulated until the game clears them
+0010 MenuJoy2Pressed/RaceJoy1Held
+0012 RaceJoy2Held
+0014 RaceJoy1Pressed
+0016 RaceJoy2Pressed
+0023 DecompSrc ; 24-bit source pointer for DecompressBegin/Next
+0042 MenuInidispShadow ; written to INIDISP ($2100) every menu NMI
+0046 RaceView1Pos ; camera track position for the top view, eases toward RaceP1TrackPos
+0059 RaceView2Pos ; camera track position for the bottom view, eases toward RaceP2TrackPos
+0200 RaceCars ; car records, 18 bytes each, linked through the ROM table at $00:A3C6
+038E RacePaletteTop ; 96 colours DMAd to CGRAM $20 at the top view's raster IRQ
+0424 MenuNmiDmaChannels ; DMA channel mask started by the menu NMI handler, then cleared
+044E RacePaletteBottom
+0592 RaceScrollTop ; 104 (BG3HOFS, BG3VOFS) word pairs, one per road line; buffer A
+0732 RaceScrollBottom ; buffer A, bottom view
+08D2 RaceScrollTopB ; buffer B
+0A72 RaceScrollBottomB ; buffer B, bottom view
+0C12 RaceHdmaColorTable ; indirect HDMA table for CGRAM channels 0-4
+0E54 RaceHdmaWindowTable ; HDMA table for window edges WH0-WH3
+0F0A RaceOamBuffers ; four 544-byte OAM images, one per view and buffer
+1E5A RaceP1Speed ; also the camera step during RaceIntro
+1E5C RaceP2Speed ; (inferred from symmetry with player 1)
+1E5E RaceP1Rpm
+1E60 RaceP2Rpm
+1E72 RaceP1Gear ; 0-4
+1E74 RaceP2Gear
+1E90 RaceFramesElapsed ; video frames since the last race update (normally 3)
+1EC4 RaceP2ComputerGap ; computer steering for player 2's car: the gap it aims for, two words (upper and lower side bound); $1EC7 bit 15 set: it passes on the lower side
+1EC9 RaceP1ComputerGap ; same for player 1's car, flag at $1ECC
+1ED7 RaceP1TrackPos ; high byte indexes per-segment tables at $7E:3E00/$7E:4000/$7E:4C00
+1EDA RaceP2TrackPos
+1EE2 RaceRivalTopSpeed ; the computer-driven second car's top speed this update
+1EE8 RaceP1GearTableOffset ; selects the car's rows in the gear tables at $05:9597, $05:99DB, $05:9A15
+1EF0 RaceRivalCourseStart ; track position where the second car's fixed course starts ($1EF2 bit 0 on, bit 1 mirrored, bit 2 the other course)
+1F06 CarTypeIndex
+1F76 RaceP1AccelButton ; button mask from the control setup
+1F7A RaceP1ShiftUpButton
+1F7C RaceP1ShiftDownButton
+1F86 Player1Name ; 8 characters, blank = spaces
+1FA3 Player2Name
+1FF6 WarmBootFlag
+1FFC FrameCounter16 ; incremented every menu NMI, survives soft reset
+1E7E RaceP1Steer ; steering angle word; high byte scales the sideways move (RaceDrivePlayers)
+1E80 RaceP2Steer
+1E82 RaceP1Drift ; the turn the car keeps; settles towards 0 by the gear's grip
+1E84 RaceP2Drift
+1E8A RaceP1Side ; side-to-side position on the road
+1E8C RaceP2Side
+1E8E RaceDistance ; scratch: distance moved this update, speed / 2 x frames
+1EEC RaceP1Skid ; sideways push after a bump, counts down; the steering can't turn meanwhile
+1EEE RaceP2Skid
+1EF5 RaceP1DriveFlags ; $01 pushed past the grip, $02 ahead of the other player (RaceCallOvertakes), $04 finished, $10 revs settling at the start, $20 out of fuel, $80 bumped
+1EF6 RaceP2DriveFlags
+1FF4 RaceRandomSeed
+1E86 RaceP1PitState ; word: >= 0 outside the pits; -1 waiting to stop, then counts down through the stop (RaceUpdatePitStops)
+1E88 RaceP2PitState
+1EFB RaceP1BumpTimer ; byte: counts from a bump; at $50 a random bump sound plays
+1EFC RaceP2BumpTimer
+1BB4 RaceTileCacheTurn ; word flipped each call of RaceUpdateTileCache: negative = view 1's turn
+1BB6 RaceTileCacheMapRows ; course length / 16, even
+1BB8 RaceTileCacheRow ; scratch: the current view's map row
+1BC0 RaceTileCache1Left ; view 1's tile cache (view 2's is $14E higher); see src/port/tilecache.c
+0572 RaceP1PitTiles ; pit stop tile streaming state, $0572-$057F (player 2: $0580-$058D)

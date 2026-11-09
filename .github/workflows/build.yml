@@ -1,0 +1,63 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure
+        run: cmake -S . -B build -A x64
+      - name: Build
+        shell: bash
+        run: |
+          # Errors also go out as annotations, which can be read without the full log.
+          set -o pipefail
+          cmake --build build --config Release 2>&1 | tee build.log || {
+            grep -E ' error |: fatal error' build.log | sort -u | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
+      - name: Test (no ROM)
+        run: ctest --test-dir build -C Release --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: race-masters-windows-x64
+          path: |
+            build/Release/race-masters.exe
+            build/Release/race-masters-launcher.exe
+            build/Release/tg_headless.exe
+            build/Release/tg_audio.exe
+            README.md
+
+  linux-mingw-cross:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 ninja-build
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+      - name: Build
+        run: cmake --build build
+      - name: Package the music tools (as the release does)
+        run: sh tools/package_music_tools.sh build dist/music-tools && find dist/music-tools -maxdepth 2
+
+  no-game-data:
+    # The ROM, the game's music (rips, MIDI, the modern remakes) and the instrument libraries
+    # never go into git: players make the modern music from their own ROM (tools/music).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: No ROM, audio, MIDI or sample libraries committed
+        run: |
+          bad=$(git ls-files -- '*.sfc' '*.smc' '*.spc' '*.ogg' '*.wav' '*.mp3' '*.flac' '*.mid' '*.midi' \
+                '*.sfz' '*.sf2' '*.fxp' 'audio-modern/*')
+          if [ -n "$bad" ]; then
+            echo "::error::Game data or audio is committed (keep it out of git):"
+            echo "$bad"
+            exit 1
+          fi

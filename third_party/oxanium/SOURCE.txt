@@ -1,0 +1,6 @@
+Oxanium (variable weight), version 2.000, copyright 2019 The Oxanium Project Authors,
+https://github.com/sevmeyer/oxanium (also distributed by Google Fonts).
+SIL Open Font License 1.1; see OFL.txt. Unmodified.
+
+Used by tools/gen_launcher_art.py (the launcher's logo and Start word), tools/make_logo_glyphs.py
+(src/mod3d/logo_glyphs.h) and tools/cars/paint_cars.py (car liveries).

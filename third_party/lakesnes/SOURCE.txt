@@ -1,0 +1,19 @@
+LakeSnes SNES emulator core, vendored unmodified from
+https://github.com/angelo-wf/LakeSnes at commit 9db90b86e46a377609305e298dd92d71cd1d4c8a.
+MIT licensed; see LICENSE.txt.
+
+Local changes (marked "topgear-pc" in the source):
+- cpu.h/cpu.c: optional traceHook called before each opcode fetch; optional callHook
+  there that can run a translated routine in place of the code at PC; a count of
+  interrupts taken and of handlers still running (intDepth, lowered by RTI); a flag that
+  holds interrupts off (blockInterrupts).
+- snes.h/snes.c: optional readHook and writeHook called for every A-bus read and write;
+  optional hdmaWriteHook called for every B-bus write made by HDMA (dma.c sets inHdma).
+- statehandler.c: byte and word arrays saved and loaded in one pass instead of per byte.
+- dma.c/dma.h: dma_runPending, to run a started DMA at once.
+- dsp.h/dsp.c: an output mask (dsp_setOutputMask) leaving chosen voices out of the output
+  samples only, with a shadow echo outside APU RAM for the kept voices (the modern music
+  replaces the music voices; the APU itself runs exactly as before). dsp_init uses calloc.
+- ppu_full.c: not part of LakeSnes; the port's own code (widescreen and the full-screen
+  1-player view, drawn again from the PPU's per-line state), kept here beside the PPU it
+  extends. Not covered by LakeSnes's licence notice.

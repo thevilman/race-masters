@@ -1,0 +1,41 @@
+# 1 player: race_1p menus, then no race input (B is not a race button with these controls):
+# the car stays on the grid and the cars from behind ram it (RaceMoveCars, $00:A2C4: five
+# rear pushes), and the curves carry it outwards while it rolls on ($05:DA0F)
+# frames 9000
+1439 1 START
+1442 1 -
+1547 1 START
+1550 1 -
+1655 1 START
+1658 1 -
+1763 1 UP
+1766 1 -
+1871 1 LEFT
+1874 1 -
+1979 1 START
+1982 1 -
+2087 1 RIGHT
+2090 1 -
+2195 1 START
+2198 1 -
+2303 1 START
+2306 1 -
+2561 1 START
+2564 1 -
+2969 1 DOWN
+2972 1 -
+3077 1 DOWN
+3080 1 -
+3185 1 DOWN
+3188 1 -
+3293 1 DOWN
+3296 1 -
+3401 1 START
+3404 1 -
+3509 1 START
+3512 1 -
+3617 1 START
+3620 1 -
+3725 1 START
+3728 1 -
+3950 1 B

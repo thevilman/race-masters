@@ -1,0 +1,6 @@
+stb_vorbis.c v1.22 (Ogg Vorbis decoder, Sean Barrett), vendored unmodified from
+https://github.com/nothings/stb (master, stb_vorbis.c), SHA-256
+4c7cb2ff1f7011e9d67950446b7eb9ca044f2e464d76bfbb0b84dd2e23e65636.
+MIT or public domain, your choice; see LICENSE.txt.
+
+Used by src/audio/music.c to stream the player's modern music (audio-modern/*.ogg).

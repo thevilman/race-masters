@@ -1,0 +1,94 @@
+# Names and comments for the disassembly: <bank>:<addr> [name] [; comment]
+# Addresses are CPU addresses in the LoROM map (banks 00-0F, $8000-$FFFF).
+
+00:8000 Reset ; power-on: decompress RAM code from $0D:E000 to $7E:2000, upload the sound driver, warm-boot check, then GameInit
+00:EA8E DecompressBegin ; LZ decompressor with a 2 KiB ring at $07B2, one byte per call (source pointer in $23-$25; src/port/decompress.c)
+00:EA9B DecompressNext ; next decompressed byte in A; carry set at end of stream
+00:EC7D UnusedInterrupt ; COP, BRK, ABORT and emulation-mode NMI/IRQ all point here
+00:FFC0 RomHeader ; internal header: title, map mode, checksum
+00:FFE0 Vectors ; native NMI -> $0000 (JML NmiHandler), IRQ -> $0004 (RTI)
+07:8000 UploadSoundDriver ; called at boot with A = 0
+0F:8000 NmiHandler ; runs queued DMA ($0424), writes INIDISP from $42, counts frames, reads both joypads
+0F:806D GameInit ; installs the NMI trampoline at $0000, default names/records, then the title/menu flow
+0F:80BD SetupColorGradientHdma ; HDMA channels 3/4 write CGRAM ($2121/$2122) from tables at $0D:C7BC/$0D:C7F3
+0F:80F4 ResetNamesAndRecords ; blank player names, default records from $0D:C656 and $0D:C696
+00:81B8 RaceSetup ; installs the race NMI/IRQ trampolines; continues into PPU setup, enables NMI + H/V IRQ (NMITIMEN $B1 at $00:8467) and renders both views once
+00:EC1A RaceNmiHandler ; races: reads both joypads only
+00:EC5B RaceIrqHandler ; races: raster IRQ, dispatches through JSR ($000A)
+01:8000 RaceBuildSprites ; fills both views' OAM buffers (through $CC and $D8) from their object lists at $1836 and $19D6 (src/port/sprites.c)
+01:8A87 RaceAddSprite ; adds a sprite definition's parts to player 1's OAM buffer; carry set when full
+01:8C5C RaceAddSpriteSplit ; same, for the split part of player 1's view (bottom line in $4E)
+01:8E33 RaceAddSpriteP2 ; same, player 2's buffer at $D8
+01:9008 RaceAddSpriteP2Split ; same, split part of player 2's view (bottom line in $61)
+00:8FC0 RaceUploadBank3Tiles ; while $1E86 = -3, streams 4 KiB of tiles from bank $03 to VRAM $3000, 1 KiB per vblank (src/port/uploads.c)
+00:D86A RaceUploadMessageTiles ; one 64-byte block of a player's message tiles per vblank
+00:B639 RaceSetupHdma ; seven HDMA channels: CGRAM colours (0-4), BG3 scroll (5), window edges (6)
+00:EC0E RaceSyncWait ; sets $0C = ~A, then spins until a raster IRQ handler clears it; this paces the race to one update every three frames
+00:8504 RaceIntro ; waits for $51, then pans each view's camera onto its car
+00:8636 RaceCountdown ; start lights: four steps of 60 frames, players may rev engines
+00:86C3 RaceMainLoop ; one pass per race update (every three frames)
+00:88A1 RaceRevEngines ; raises RPM while the accelerate button is held, decays it otherwise
+00:A175 RaceMoveCars ; moves every car by speed x frames elapsed, bumps cars a player catches, then falls into RaceSortCars (src/port/cars.c)
+05:D2E0 RaceDrivePlayers ; both players' driving: gears, speed, fuel, track objects, steering, bumping cars, laps (src/port/drive.c)
+05:DB52 RaceDrivePlayer2 ; player 2's copy; jumps to RaceDriveComputerP2 when $1F04 is clear and $1EF3 bit 7 is clear
+05:ED92 RaceDriveComputerP2 ; the computer drives the second car (1-player races); jumps back to $05:E3B9
+05:F79F RaceRivalFuelShort ; carry set when X times the distance left is at least the second car's fuel
+05:E8E9 RacePushCarP1 ; player 1 ran into computer car X: the car is pushed, the player takes its speed
+05:E944 RacePushCarP2
+05:E99F RaceBumpSound ; X = random 0-15, index into the bump sound tables at $05:E1CA / $05:E1CE
+00:A89A RaceRandom ; JSL; A = 0: next random byte (seed $1FF4, also in $1EF7); else a random value below A + 1
+00:A8E1 RaceBuildGapTable ; the computer steering's gap table at $7E:7000 (see ram.txt $1EC4). Its loop compares the segment offset with the lap length ($0200), so it runs 16 times too far, through $7E:C7FF, reading leftover words as indexes; those reads reach APU ports and PPU read ports, so a translation can't reproduce the junk exactly
+05:E9AF RaceDriveComputerP1 ; the computer steers player 1's car (attract mode, after finishing): aims for a gap in the road, passing the car ahead
+05:EB58 RaceDriveComputerP2Car ; same for player 2's car
+05:ED3A RaceHitObjectP1 ; track object with bit 15 set at the car's segment; carry set when it's solid
+05:ED01 RaceHitObjectP2
+00:CE61 RaceDrawHud ; once per race update: speedometers, gears, nitros, positions and lap times into VRAM, fuel and RPM bars into RAM buffers (src/port/hud.c)
+00:9381 RaceBuildWindowTable ; channel 6 window HDMA table through the pointer at $EB; per-view shapes in 1-player races (src/port/race.c)
+00:ABFC RaceListVisibleCars ; per view, the cars up to $400 ahead of the camera with sprite words ($178A, $17DC); drifts computer cars side to side (src/port/visible.c)
+00:8910 RaceUpdateSegmentValues ; $7E:3E00 per-segment table entries for each view and for the leading car (src/port/race.c)
+00:DA75 RaceUpdateMessages ; HUD lap, position, fuel and pit messages for both players, tables in bank $06 (src/port/messages.c)
+00:A1BD RaceSortCars ; wraps cars onto the next lap (finish order and times), bubbles the car list into track order, sets both players' positions (src/port/cars.c)
+00:A30C RaceBumpCarP1 ; player 1 ran into car X: the car is pushed, the player takes its speed (src/port/cars.c)
+00:A372 RaceBumpCarP2
+00:AA79 RacePosition ; Y = 1 + cars ahead of car X (src/port/cars.c)
+00:AB7A RaceFinishOthers ; after both players finish: runs the other cars at 8x until ten have finished (src/port/cars.c)
+00:B18C RaceBuildSplitWindowTable ; 2-player channel 6 window table from the band heights at $0151-$0179; hangs if $1EC0 >= 9 (src/port/race.c)
+00:90CC RaceUpdatePitStops ; steps each player's pit stop sequence ($1E86 / $1E88 count down from -1): set-up, tiles, refuel by $7F a frame to $A7FF, drive out (src/port/race.c)
+00:8B26 RacePitSpritesP1 ; hides player 1's view sprites and loads the pit crew's high OAM words
+00:8B67 RacePitSpritesP2 ; player 2's copy
+00:B33B RaceCallOvertakes ; message $13 once when a player gets ahead of the other; random bump sounds when $1EFB / $1EFC reach $50 (src/port/race.c)
+00:B3F2 RaceRandomBumpSound ; X = a random number 0-15
+00:BF14 RaceLoadAll ; once before a race: course, skyline, roadside, cars, grid, gap table, tile caches, palettes, HUD, names, HDMA; then $1E56 from $DEA4
+00:BF44 RaceLoadCourse ; renderer code to $7E:2000, road strips, tile blocks and map from bank $0C, per-segment values from $06:EDC6 (src/port/setup.c)
+00:C182 RaceLoadSkyline ; sky rows of both BG maps and the skyline tiles at VRAM $6800 (src/port/setup.c)
+00:C230 RaceLoadRoadside ; road tiles, ground maps (mirrored unless $DEE4 bit 15) and four roadside object slots (src/port/setup.c)
+00:C5B2 RaceLoadCars ; both players' car graphics ($F60 bytes each from bank $04) (src/port/setup.c)
+00:A558 RaceSetupGrid ; starting grid: car records from $A732/$A744/$A756, random speeds, players' start state (src/port/setup.c)
+00:C6BB RacePreloadTileCache ; steps both cameras forward $20 at a time 45 times, filling the roadside tile caches (src/port/setup.c)
+00:CCDB RaceLoadPalettes ; palettes from bank $08, then waits for the NMI to upload them ($038C); not translatable until the frame loop is C
+00:C722 RaceDrawHudFrame ; HUD tiles and both players' HUD frames, labels and starting places in the BG3 map (src/port/setup.c)
+00:D913 RaceSetupNames ; player name banners ("DEMO", "COMPUTER"), their tiles and message timings (src/port/setup.c)
+00:CC9B RaceClearHdmaTables ; clears the colour/window HDMA tables and fills both scroll tables (src/port/setup.c)
+00:B631 RaceSetupHdmaSynced ; RaceSyncWait, then RaceSetupHdma
+00:EA40 DecompressToVram ; stream at bank (A low):X to VRAM Y; A high = VMAIN, bit 6 = single bytes (src/port/setup.c)
+00:E20D RaceUpdateTileCache ; roadside object tile cache, one view per call: queues objects 40 rows ahead, allocates 256-tile slots, DMAs $400 bytes a call (src/port/tilecache.c)
+00:8DA8 RacePitReloadP1 ; at pit state -9, reloads the view's resident object tiles $400 bytes a frame (src/port/tilecache.c)
+00:8EB4 RacePitReloadP2 ; player 2's copy (limit $400 instead of $401)
+00:8966 RacePitScrollP1 ; pit scene scroll HDMA table into the back buffer ($CC), then swaps buffers (src/port/race.c)
+00:8A2C RacePitScrollP2 ; player 2's copy ($D8)
+00:9046 RaceUploadBank3TilesP2 ; player 2's copy of RaceUploadBank3Tiles: $1E88, VRAM $4000, car $1FAC (src/port/uploads.c)
+00:AEF3 RaceListGridCars ; RaceListVisibleCars for the fly-in to the grid: from the cameras, no steering (src/port/visible.c)
+00:8878 RacePauseCheck ; start pauses until start is pressed again (waits on the NMI's joypad reads)
+00:B75A RaceIrqTop ; first raster IRQ stage each frame: HDMA tables, OAM DMA, sound commands, then jumps to the next stage
+00:B3FE RaceIrqTopViewOff ; raster stage: the top view's sky band when the view is off
+00:B42F RaceIrqTopViewSky ; raster stage: the top view's sky with no road band
+00:B462 RaceIrqTopViewHorizon ; raster stage: the top view's sky, then the road band from line $AE
+00:B49B RaceIrqTopViewRoad ; raster stage: the top view with the road from the top
+00:B4C4 RaceIrqTopRoadBand ; raster stage: the top view's road band, from the horizon down
+00:B511 RaceIrqBottomViewOff ; raster stage: the bottom view when it's off (ends in the mid-screen DMA)
+00:B545 RaceIrqBottomViewSky ; raster stage: the bottom view's sky with no road band (ends in the mid-screen DMA)
+00:B57B RaceIrqBottomViewHorizon ; raster stage: the bottom view's sky (ends in the mid-screen DMA)
+00:B5B6 RaceIrqBottomViewRoad ; raster stage: the bottom view with the road from the top (ends in the mid-screen DMA)
+00:B5E2 RaceIrqBottomRoadBand ; raster stage: the bottom view's road band, from the horizon down
+00:B6D1 RaceIrqVblank ; raster stage at line $E0: screen off, frame count ($0C), OAM and palette DMA, then $08
+00:BE78 RaceIrqMidScreenDma ; waits for hblank, screen off, palette and OAM DMA for the bottom view, screen on
